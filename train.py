@@ -9,6 +9,7 @@ from engine import *
 import os
 import sys
 import shutil
+import argparse
 
 from utils import *
 from configs.config_setting import setting_config
@@ -18,7 +19,7 @@ warnings.filterwarnings("ignore")
 
 
 
-def main(config):
+def main(config, is_resumed=False):
 
     print('#----------Creating logger----------#')
     sys.path.append(config.work_dir + '/')
@@ -30,6 +31,25 @@ def main(config):
         os.makedirs(checkpoint_dir)
     if not os.path.exists(outputs):
         os.makedirs(outputs)
+
+    if is_resumed:
+        print('#----------Restoring Backup from Drive----------#')
+        # Đường dẫn file backup trên Drive (File mà bạn đã lưu là latest_backup.pth)
+        drive_backup_path = '/content/drive/MyDrive/VM-UNet/checkpoints_backup/latest_backup.pth'
+        
+        # Đường dẫn đích (Là file latest.pth trong thư mục mới tạo)
+        target_path = resume_model 
+        
+        if os.path.exists(drive_backup_path):
+            try:
+                shutil.copy(drive_backup_path, target_path)
+                print(f"✅ Đã copy backup từ Drive vào: {target_path}")
+                print("Code sẽ tự động nhận diện file này và resume training.")
+            except Exception as e:
+                print(f"❌ Lỗi khi copy backup: {e}")
+        else:
+            print(f"⚠️ Cảnh báo: Không tìm thấy file backup tại {drive_backup_path}")
+            print("-> Sẽ bắt đầu train từ đầu (Start from scratch).")
 
     global logger
     logger = get_logger('train', log_dir)
@@ -228,5 +248,14 @@ def main(config):
 
 
 if __name__ == '__main__':
+    # 1. Khởi tạo ArgumentParser
+    parser = argparse.ArgumentParser()
+    # Thêm argument --is_resumed (nếu có cờ này thì True, không có thì False)
+    parser.add_argument('--is_resumed', action='store_true', help='Resume training from Drive backup')
+    
+    # 2. Lấy các tham số
+    args = parser.parse_args()
+    
+    # 3. Load config và truyền tham số vào main
     config = setting_config
-    main(config)
+    main(config, is_resumed=args.is_resumed)
