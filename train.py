@@ -127,7 +127,7 @@ def main(config, is_resumed=False):
     min_epoch = 1
 
     if config.only_test_and_save_figs:
-        checkpoint = torch.load(config.best_ckpt_path, map_location=torch.device('cpu'))
+        checkpoint = torch.load(config.best_ckpt_path, map_location=torch.device('cpu'), weights_only=False)
         model.load_state_dict(checkpoint)
         config.work_dir = config.img_save_path
         if not os.path.exists(config.work_dir + 'outputs/'):
@@ -146,7 +146,7 @@ def main(config, is_resumed=False):
 
     if os.path.exists(resume_model):
         print('#----------Resume Model and Other params----------#')
-        checkpoint = torch.load(resume_model, map_location=torch.device('cpu'))
+        checkpoint = torch.load(resume_model, map_location=torch.device('cpu'), weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
@@ -232,7 +232,7 @@ def main(config, is_resumed=False):
 
     if os.path.exists(os.path.join(checkpoint_dir, 'best.pth')):
         print('#----------Testing----------#')
-        best_weight = torch.load(config.work_dir + 'checkpoints/best.pth', map_location=torch.device('cpu'))
+        best_weight = torch.load(config.work_dir + 'checkpoints/best.pth', map_location=torch.device('cpu'), weights_only=False)
         model.load_state_dict(best_weight)
         loss = test_one_epoch(
                 val_loader,
