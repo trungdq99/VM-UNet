@@ -8,6 +8,7 @@ from models.vmunet.vmunet import VMUNet
 from engine import *
 import os
 import sys
+import shutil
 
 from utils import *
 from configs.config_setting import setting_config
@@ -171,6 +172,32 @@ def main(config):
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, 'best.pth'))
             min_loss = loss
             min_epoch = epoch
+
+            # --- ĐOẠN CODE THÊM MỚI: TỰ ĐỘNG BACKUP SANG DRIVE ---
+            try:
+                # Định nghĩa đường dẫn lưu trên Drive (Bạn sửa lại tên folder cho đúng ý mình)
+                # Lưu ý: '/content/drive/MyDrive/...' là đường dẫn chuẩn khi đã mount drive
+                drive_backup_dir = '/content/drive/MyDrive/VM-UNet/checkpoints_backup'
+                
+                # Tạo thư mục trên Drive nếu chưa có
+                if not os.path.exists(drive_backup_dir):
+                    os.makedirs(drive_backup_dir)
+
+                # Copy file best.pth từ Colab sang Drive
+                # Đổi tên file kèm theo số epoch và loss để dễ theo dõi lịch sử
+                backup_name = f'best_epoch_{epoch}_loss_{loss:.4f}.pth'
+                shutil.copy(os.path.join(checkpoint_dir, 'best.pth'), 
+                            os.path.join(drive_backup_dir, backup_name))
+                
+                # Copy luôn file latest.pth để resume nếu cần
+                shutil.copy(os.path.join(checkpoint_dir, 'latest.pth'), 
+                            os.path.join(drive_backup_dir, 'latest_backup.pth'))
+
+                print(f"✅ [BACKUP] Đã lưu model tốt nhất (Epoch {epoch}) sang Google Drive: {backup_name}")
+            
+            except Exception as e:
+                print(f"⚠️ [WARNING] Không thể backup sang Drive: {e}")
+            # --- KẾT THÚC ĐOẠN CODE THÊM MỚI ---
 
         torch.save(
             {

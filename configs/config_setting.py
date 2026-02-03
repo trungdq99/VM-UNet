@@ -19,11 +19,11 @@ class setting_config:
         'load_ckpt_path': './pre_trained_weights/vmamba_small_e238_ema.pth',
     }
 
-    datasets = 'isic18' 
+    datasets = 'isic17' 
     if datasets == 'isic18':
-        data_path = './data/isic2018/'
+        data_path = './data/isic18/'
     elif datasets == 'isic17':
-        data_path = './data/isic2017/'
+        data_path = './data/isic17/'
     else:
         raise Exception('datasets in not right!')
 
