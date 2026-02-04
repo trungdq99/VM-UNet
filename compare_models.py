@@ -168,14 +168,19 @@ def main():
         print(f"\n--- Evaluating {name} ---")
         print(f"Loading weights from: {ckpt_path}")
         try:
-            checkpoint = torch.load(ckpt_path, map_location=device)
+            checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
             # Helper to handle if state_dict is inside a key (common in training scripts)
             if 'model_state_dict' in checkpoint:
                 state_dict = checkpoint['model_state_dict']
             else:
                 state_dict = checkpoint
             
-            model.load_state_dict(state_dict)
+            # Load with strict=False to ignore extra keys like 'total_ops', 'total_params'
+            msg = model.load_state_dict(state_dict, strict=False)
+            if msg.missing_keys:
+                print(f"Warning: Missing keys in state_dict: {msg.missing_keys}")
+            # we can ignore msg.unexpected_keys as they are likely the cause of the previous error
+
         except Exception as e:
             print(f"Error loading weights for {name}: {e}")
             return None
