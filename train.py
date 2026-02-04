@@ -209,9 +209,7 @@ def main(config, is_resumed=False):
                 shutil.copy(os.path.join(checkpoint_dir, 'best.pth'), 
                             os.path.join(drive_backup_dir, backup_name))
                 
-                # Copy luôn file latest.pth để resume nếu cần
-                shutil.copy(os.path.join(checkpoint_dir, 'latest.pth'), 
-                            os.path.join(drive_backup_dir, 'latest_backup.pth'))
+
 
                 print(f"✅ [BACKUP] Đã lưu model tốt nhất (Epoch {epoch}) sang Google Drive: {backup_name}")
             
@@ -229,6 +227,17 @@ def main(config, is_resumed=False):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
             }, os.path.join(checkpoint_dir, 'latest.pth')) 
+
+        # --- BACKUP LATEST CHECKPOINT SANG DRIVE (Mỗi epoch) ---
+        try:
+            drive_backup_dir = '/content/drive/MyDrive/VM-UNet/checkpoints_backup'
+            if not os.path.exists(drive_backup_dir):
+                os.makedirs(drive_backup_dir)
+
+            shutil.copy(os.path.join(checkpoint_dir, 'latest.pth'), 
+                        os.path.join(drive_backup_dir, 'latest_backup.pth'))
+        except Exception as e:
+            print(f"⚠️ [WARNING] Không thể backup latest.pth sang Drive: {e}") 
 
     if os.path.exists(os.path.join(checkpoint_dir, 'best.pth')):
         print('#----------Testing----------#')
