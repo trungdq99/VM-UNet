@@ -181,7 +181,8 @@ def generate_qualitative_results(model, dataset, my_ckpt, author_ckpt, device, o
                 for sample in samples:
                     out = model(sample["img_input"])
                     if isinstance(out, tuple): out = out[0]
-                    pred = torch.sigmoid(out).squeeze().cpu().numpy()
+                    # Model already applies sigmoid if num_classes=1 (see models/vmunet/vmunet.py)
+                    pred = out.squeeze().cpu().numpy()
                     pred_bin = (pred >= 0.5).astype(np.uint8) * 255
                     results.append(pred_bin)
             return results
@@ -290,7 +291,8 @@ def evaluate_model(model, val_loader, criterion, device, config):
 
             # Post-processing for metrics
             msk_np = msk.squeeze(1).cpu().detach().numpy()
-            out_np = torch.sigmoid(out).squeeze(1).cpu().detach().numpy()
+            # Model already applies sigmoid
+            out_np = out.squeeze(1).cpu().detach().numpy()
             
             preds.append(out_np)
             gts.append(msk_np)
@@ -385,6 +387,10 @@ def main():
             msg = model.load_state_dict(new_state_dict, strict=False)
             if msg.missing_keys:
                 print(f"Warning: Missing keys in state_dict: {msg.missing_keys}")
+            
+            # Verify weights changed
+            param_norm = sum(p.norm().item() for p in model.parameters())
+            print(f"Model L2 Norm verify: {param_norm:.4f}")
 
         except Exception as e:
             print(f"Error loading weights for {name}: {e}")
