@@ -150,6 +150,9 @@ def generate_qualitative_results(model, dataset, my_ckpt, author_ckpt, device, o
         else:
             gt_mask = mask_tensor
         
+        # Binarize ground truth mask for visualization to remove noise
+        gt_mask = (gt_mask > 0.5).astype(np.float32)
+        
         samples.append({
             "idx": idx,
             "img_input": img_input,
@@ -280,6 +283,8 @@ def evaluate_model(model, val_loader, criterion, device, config):
             img, msk = data
             img = img.to(device).float()
             msk = msk.to(device).float()
+            # Binarize mask to remove noise (0-255 values normalized to 0-1, so >0.5 covers >127)
+            msk = (msk > 0.5).float()
 
             out = model(img)
             # Handle tuple output if necessary (checking engine.py logic)
@@ -329,9 +334,9 @@ def main():
     print(f"\nUsing device: {device}")
 
     # Prepare Dataset
-    print("\n--- Preparing Validation Dataset ---")
+    print("\n--- Preparing Test Dataset ---")
     try:
-        val_dataset = NPY_datasets(config.data_path, config, train=False)
+        val_dataset = NPY_datasets(config.data_path, config, split="test", train=False)
         val_loader = DataLoader(
             val_dataset,
             batch_size=1, # Eval usually done with batch_size 1 for accuracy
@@ -340,7 +345,7 @@ def main():
             num_workers=config.num_workers,
             drop_last=False
         )
-        print(f"Validation set size: {len(val_dataset)}")
+        print(f"Test set size: {len(val_dataset)}")
     except Exception as e:
         print(f"Error loading dataset: {e}")
         print("Make sure 'config.data_path' in configs/config_setting.py is correct.")

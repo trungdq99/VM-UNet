@@ -14,25 +14,22 @@ from PIL import Image
 
 
 class NPY_datasets(Dataset):
-    def __init__(self, path_Data, config, train=True):
+    def __init__(self, path_Data, config, train=True, split=None):
         super(NPY_datasets, self)
-        if train:
-            images_list = sorted(os.listdir(path_Data+'train/images/'))
-            masks_list = sorted(os.listdir(path_Data+'train/masks/'))
-            self.data = []
-            for i in range(len(images_list)):
-                img_path = path_Data+'train/images/' + images_list[i]
-                mask_path = path_Data+'train/masks/' + masks_list[i]
-                self.data.append([img_path, mask_path])
+        if split is None:
+            split = 'train' if train else 'val'
+            
+        images_list = sorted(os.listdir(os.path.join(path_Data, split, 'images/')))
+        masks_list = sorted(os.listdir(os.path.join(path_Data, split, 'masks/')))
+        self.data = []
+        for i in range(len(images_list)):
+            img_path = os.path.join(path_Data, split, 'images', images_list[i])
+            mask_path = os.path.join(path_Data, split, 'masks', masks_list[i])
+            self.data.append([img_path, mask_path])
+            
+        if split == 'train':
             self.transformer = config.train_transformer
         else:
-            images_list = sorted(os.listdir(path_Data+'val/images/'))
-            masks_list = sorted(os.listdir(path_Data+'val/masks/'))
-            self.data = []
-            for i in range(len(images_list)):
-                img_path = path_Data+'val/images/' + images_list[i]
-                mask_path = path_Data+'val/masks/' + masks_list[i]
-                self.data.append([img_path, mask_path])
             self.transformer = config.test_transformer
         
     def __getitem__(self, indx):

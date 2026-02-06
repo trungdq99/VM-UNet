@@ -8,6 +8,8 @@ SOURCE_TRAIN_IMAGES = "./Downloads/ISIC-2017_Training_Data"
 SOURCE_TRAIN_MASKS = "./Downloads/ISIC-2017_Training_Part1_GroundTruth"
 SOURCE_VAL_IMAGES = "./Downloads/ISIC-2017_Validation_Data"
 SOURCE_VAL_MASKS = "./Downloads/ISIC-2017_Validation_Part1_GroundTruth"
+SOURCE_TEST_IMAGES = "./Downloads/ISIC-2017_Test_v2_Data"
+SOURCE_TEST_MASKS = "./Downloads/ISIC-2017_Test_v2_Part1_GroundTruth"
 
 # Thư mục đích (Project của bạn)
 TARGET_ROOT = "./data/isic17"
@@ -60,9 +62,12 @@ def process_data(src_img_dir, src_mask_dir, split_name):
 
 if __name__ == "__main__":
     # Xử lý tập Train
-    process_data(SOURCE_TRAIN_IMAGES, SOURCE_TRAIN_MASKS, "train")
+    # process_data(SOURCE_TRAIN_IMAGES, SOURCE_TRAIN_MASKS, "train")
     
     # Xử lý tập Val
-    process_data(SOURCE_VAL_IMAGES, SOURCE_VAL_MASKS, "val")
+    # process_data(SOURCE_VAL_IMAGES, SOURCE_VAL_MASKS, "val")
+    
+    # Xử lý tập Test
+    process_data(SOURCE_TEST_IMAGES, SOURCE_TEST_MASKS, "test")
     
     print("\nĐã chuẩn bị dữ liệu xong! Cấu trúc thư mục tại ./data/isic17 đã sẵn sàng.")
