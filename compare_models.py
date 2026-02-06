@@ -33,75 +33,94 @@ def download_from_drive(url, output_path):
         print(f"Error downloading {url}: {e}")
         return False
 
-def get_metrics(preds, gts, threshold=0.5):
-    """Calculates metrics from predictions and ground truths."""
-    preds = np.array(preds).reshape(-1)
-    gts = np.array(gts).reshape(-1)
-
-    y_pre = np.where(preds >= threshold, 1, 0)
-    y_true = np.where(gts >= 0.5, 1, 0)
-
-    confusion = confusion_matrix(y_true, y_pre)
-    # Handle cases where confusion matrix might not be 2x2 (e.g. only one class present)
-    if confusion.shape == (2, 2):
-        TN, FP, FN, TP = confusion[0,0], confusion[0,1], confusion[1,0], confusion[1,1]
+def calculate_hd95(pred, gt):
+    """
+    Robust HD95 calculation.
+    Returns 0.0 if both are empty (perfect match).
+    Returns 100.0 if one is empty and other is not (complete mismatch penalty).
+    """
+    if pred.sum() > 0 and gt.sum() > 0:
+        try:
+            return metric.binary.hd95(pred, gt)
+        except Exception as e:
+            print(f"HD95 calculation error: {e}")
+            return 100.0
+    elif pred.sum() == 0 and gt.sum() == 0:
+        return 0.0
     else:
-        # Fallback or simplified calculation if needed, though for binary seg it usually fits
-        # If ground truth is all 0s and pred is all 0s, confusion is [[N, 0], [0, 0]]
-        # This is strictly for 0 and 1 classes.
-        TN = confusion[0,0] if confusion.shape[0] > 0 else 0
-        TP = 0
-        FP = 0
-        FN = 0
-        # This part is simplified; usually with sufficient data 2x2 is expected.
-    
-    total = float(np.sum(confusion))
-    accuracy = float(TN + TP) / total if total != 0 else 0
-    sensitivity = float(TP) / float(TP + FN) if float(TP + FN) != 0 else 0
-    specificity = float(TN) / float(TN + FP) if float(TN + FP) != 0 else 0
-    f1_or_dsc = float(2 * TP) / float(2 * TP + FP + FN) if float(2 * TP + FP + FN) != 0 else 0
-    miou = float(TP) / float(TP + FP + FN) if float(TP + FP + FN) != 0 else 0
+        # Penalize if one is empty and the other is not
+        return 100.0
 
-    
-    # Calculate per-case metrics (DSC and HD95)
+def get_metrics(preds, gts, threshold=0.5):
+    """
+    Calculates metrics from predictions and ground truths memory-efficiently.
+    """
     dsc_list = []
     hd95_list = []
     
-    
+    # Global confusion matrix evaluators
+    total_TN = 0
+    total_FP = 0
+    total_FN = 0
+    total_TP = 0
+
     for p, g in zip(preds, gts):
         # Ensure binary masks and correct shape (2D)
+        # p, g are numpy arrays
         p = np.squeeze(p)
         g = np.squeeze(g)
         
+        # Binarize
         p_bin = (p >= threshold).astype(np.uint8)
         g_bin = (g >= 0.5).astype(np.uint8)
         
-        # Dice per case
+        # 1. Update Global Terms for Confusion Matrix
+        # We process flattened arrays per image, which is much smaller than dataset-wide flatten
+        p_flat = p_bin.ravel()
+        g_flat = g_bin.ravel()
+        
+        # Fast confusion matrix using bincount or boolean logic
+        # 00: TN, 01: FP (pred=1, gt=0), 10: FN (pred=0, gt=1), 11: TP
+        # Let's stick to simple logic for clarity or use sklearn's confusion_matrix per image
+        tn, fp, fn, tp = confusion_matrix(g_flat, p_flat, labels=[0, 1]).ravel()
+        
+        total_TN += tn
+        total_FP += fp
+        total_FN += fn
+        total_TP += tp
+
+        # 2. Per-case Metrics (DSC & HD95)
+        # Dice
         intersection = (p_bin * g_bin).sum()
         union = p_bin.sum() + g_bin.sum()
         if union == 0:
-            dsc = 1.0 # Both empty is a match
+            dsc = 1.0 # Both empty -> Match
         else:
             dsc = 2.0 * intersection / union
         dsc_list.append(dsc)
         
-        # HD95 per case
-        if p_bin.sum() > 0 and g_bin.sum() > 0:
-            try:
-                # metric.binary.hd95 is imported via from utils import * (which imports from medpy)
-                hd95 = metric.binary.hd95(p_bin, g_bin)
-            except Exception as e:
-                print(f"HD95 calculation error: {e}")
-                hd95 = 0.0
-        else:
-            hd95 = 0.0
+        # HD95
+        hd95 = calculate_hd95(p_bin, g_bin)
         hd95_list.append(hd95)
+
+    # Calculate Global Aggregate Metrics
+    total_pixels = total_TN + total_TP + total_FP + total_FN
+    accuracy = (total_TN + total_TP) / total_pixels if total_pixels > 0 else 0
+    sensitivity = total_TP / (total_TP + total_FN) if (total_TP + total_FN) > 0 else 0
+    specificity = total_TN / (total_TN + total_FP) if (total_TN + total_FP) > 0 else 0
+    
+    # Global F1/DSC based on total TP/FP/FN (Micro-averaged)
+    global_dsc = 2 * total_TP / (2 * total_TP + total_FP + total_FN) if (2 * total_TP + total_FP + total_FN) > 0 else 0
+    miou = total_TP / (total_TP + total_FP + total_FN) if (total_TP + total_FP + total_FN) > 0 else 0
+
+    # Reconstruct Global Confusion Matrix
+    confusion = np.array([[total_TN, total_FP], [total_FN, total_TP]])
 
     return {
         "Accuracy": accuracy,
         "Sensitivity (Recall)": sensitivity,
         "Specificity": specificity,
-        "DSC": f1_or_dsc, # Keep global F1 as "DSC" or overwrite? Let's keep global for table, but use list for plot. 
+        "DSC": global_dsc, 
         "Mean DSC": np.mean(dsc_list),
         "HD95": np.mean(hd95_list),
         "mIoU": miou,
@@ -111,70 +130,82 @@ def get_metrics(preds, gts, threshold=0.5):
     }
 
 def generate_qualitative_results(model, dataset, my_ckpt, author_ckpt, device, output_dir, count=5):
-    """Generates visual comparisons for a few random samples."""
+    """Generates visual comparisons efficiently."""
     print(f"\n--- Generating Qualitative Results (Saving to {output_dir}) ---")
     os.makedirs(output_dir, exist_ok=True)
     
     indices = random.sample(range(len(dataset)), min(count, len(dataset)))
     
-    # Prepare model loading helper
-    def load_weights(ckpt_path):
-        try:
-            checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
-            state_dict = checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint
-            model.load_state_dict(state_dict, strict=False)
-            model.eval()
-            return True
-        except Exception as e:
-            print(f"Error loading {ckpt_path}: {e}")
-            return False
-
+    # Pre-load data to avoid keeping dataset open or issues
+    samples = []
     for idx in indices:
-        img_tensor, mask_tensor = dataset[idx] # Assuming dataset returns (img, mask) tensors or arrays
-        # Check if dataset returns tensors or numpy (NPY_datasets usually returns tensors via transforms)
-        # However, looking at utils.py myToTensor, it returns tensors. 
-        
-        # Ensure we have a batch dimension
+        img_tensor, mask_tensor = dataset[idx]
         if isinstance(img_tensor, np.ndarray):
             img_input = torch.from_numpy(img_tensor).unsqueeze(0).float().to(device)
         else:
             img_input = img_tensor.unsqueeze(0).float().to(device)
             
-        # Ground Truth processing
         if isinstance(mask_tensor, torch.Tensor):
             gt_mask = mask_tensor.numpy()
         else:
             gt_mask = mask_tensor
         
-        # Squeeze dimensions for visualization (H, W)
-        if gt_mask.ndim == 3: gt_mask = gt_mask[0] # C,H,W -> H,W
+        samples.append({
+            "idx": idx,
+            "img_input": img_input,
+            "gt_mask": gt_mask
+        })
+
+    predictions = {}
+    
+    # Helper to run inference
+    def run_inference(ckpt_path, name):
+        results = []
+        try:
+            print(f"Loading {name} weights for visualization...")
+            checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
+            state_dict = checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint
             
-        # Predict with My Model
-        if not load_weights(my_ckpt): continue
-        with torch.no_grad():
-            my_out = model(img_input)
-            if isinstance(my_out, tuple): my_out = my_out[0]
-            my_pred = torch.sigmoid(my_out).squeeze().cpu().numpy()
-            my_pred_bin = (my_pred >= 0.5).astype(np.uint8) * 255
+            # Clean state dict keys if needed (e.g. remove module. prefix)
+            new_state_dict = {}
+            for k, v in state_dict.items():
+                if k.startswith('module.'):
+                    new_state_dict[k[7:]] = v
+                else:
+                    new_state_dict[k] = v
+            
+            model.load_state_dict(new_state_dict, strict=False)
+            model.eval()
+            
+            with torch.no_grad():
+                for sample in samples:
+                    out = model(sample["img_input"])
+                    if isinstance(out, tuple): out = out[0]
+                    pred = torch.sigmoid(out).squeeze().cpu().numpy()
+                    pred_bin = (pred >= 0.5).astype(np.uint8) * 255
+                    results.append(pred_bin)
+            return results
+        except Exception as e:
+            print(f"Error generating predictions for {name}: {e}")
+            return None
 
-        # Predict with Author Model
-        if not load_weights(author_ckpt): continue
-        with torch.no_grad():
-            author_out = model(img_input)
-            if isinstance(author_out, tuple): author_out = author_out[0]
-            author_pred = torch.sigmoid(author_out).squeeze().cpu().numpy()
-            author_pred_bin = (author_pred >= 0.5).astype(np.uint8) * 255
+    # Run inferences sequentially
+    my_preds = run_inference(my_ckpt, "My Model")
+    author_preds = run_inference(author_ckpt, "Author Model")
+    
+    if my_preds is None or author_preds is None:
+        print("Skipping visualization due to inference errors.")
+        return
 
-        # Process Input Image for Display
-        img_disp = img_input.squeeze().cpu().numpy()
-        if img_disp.ndim == 3: img_disp = img_disp.transpose(1, 2, 0) # C,H,W -> H,W,C
-        # Normalize to 0-1 for plt
+    # Generate Plots
+    for i, sample in enumerate(samples):
+        img_disp = sample["img_input"].squeeze().cpu().numpy()
+        if img_disp.ndim == 3: img_disp = img_disp.transpose(1, 2, 0)
         img_disp = (img_disp - img_disp.min()) / (img_disp.max() - img_disp.min())
         
-        # Process GT
-        gt_disp = gt_mask
+        gt_disp = sample["gt_mask"]
+        if gt_disp.ndim == 3: gt_disp = gt_disp[0]
         
-        # Create Plot
         fig, axes = plt.subplots(1, 4, figsize=(16, 5))
         
         # Input
@@ -188,20 +219,20 @@ def generate_qualitative_results(model, dataset, my_ckpt, author_ckpt, device, o
         axes[1].axis('off')
 
         # Author
-        axes[2].imshow(author_pred_bin, cmap='gray')
+        axes[2].imshow(author_preds[i], cmap='gray')
         axes[2].set_title("Author Prediction")
         axes[2].axis('off')
 
         # My Model
-        axes[3].imshow(my_pred_bin, cmap='gray')
+        axes[3].imshow(my_preds[i], cmap='gray')
         axes[3].set_title("My Prediction")
         axes[3].axis('off')
         
         plt.tight_layout()
-        save_path = os.path.join(output_dir, f"comparison_{idx}.png")
+        save_path = os.path.join(output_dir, f"comparison_{sample['idx']}.png")
         plt.savefig(save_path)
         plt.close()
-        
+
 def generate_quantitative_plots(my_results, author_results, output_dir):
     """Generates Heatmap and Boxplot."""
     print(f"\n--- Generating Quantitative Plots (Saving to {output_dir}) ---")
@@ -259,10 +290,10 @@ def evaluate_model(model, val_loader, criterion, device, config):
 
             # Post-processing for metrics
             msk_np = msk.squeeze(1).cpu().detach().numpy()
-            out_np = out.squeeze(1).cpu().detach().numpy()
+            out_np = torch.sigmoid(out).squeeze(1).cpu().detach().numpy()
             
-            gts.append(msk_np)
             preds.append(out_np)
+            gts.append(msk_np)
 
     metrics = get_metrics(preds, gts, config.threshold)
     metrics["Loss"] = np.mean(loss_list)
@@ -301,7 +332,7 @@ def main():
         val_dataset = NPY_datasets(config.data_path, config, train=False)
         val_loader = DataLoader(
             val_dataset,
-            batch_size=1, # Eval usually done with batch_size 1 for accuracy (matches train.py)
+            batch_size=1, # Eval usually done with batch_size 1 for accuracy
             shuffle=False,
             pin_memory=True,
             num_workers=config.num_workers,
@@ -338,17 +369,22 @@ def main():
         print(f"Loading weights from: {ckpt_path}")
         try:
             checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
-            # Helper to handle if state_dict is inside a key (common in training scripts)
             if 'model_state_dict' in checkpoint:
                 state_dict = checkpoint['model_state_dict']
             else:
                 state_dict = checkpoint
             
-            # Load with strict=False to ignore extra keys like 'total_ops', 'total_params'
-            msg = model.load_state_dict(state_dict, strict=False)
+            # Clean state dict keys if needed
+            new_state_dict = {}
+            for k, v in state_dict.items():
+                if k.startswith('module.'):
+                    new_state_dict[k[7:]] = v
+                else:
+                    new_state_dict[k] = v
+            
+            msg = model.load_state_dict(new_state_dict, strict=False)
             if msg.missing_keys:
                 print(f"Warning: Missing keys in state_dict: {msg.missing_keys}")
-            # we can ignore msg.unexpected_keys as they are likely the cause of the previous error
 
         except Exception as e:
             print(f"Error loading weights for {name}: {e}")
