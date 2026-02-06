@@ -11,6 +11,7 @@ from tqdm import tqdm
 import seaborn as sns
 import matplotlib.pyplot as plt
 import random
+from medpy import metric
 
 # Import internal modules (assuming this script is in the root of the project)
 from models.vmunet.vmunet import VMUNet
